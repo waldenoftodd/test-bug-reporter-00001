@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dino Bug 提单</title>
-  <!-- 1.5.2+ 的 npm 包不再自带浏览器预打包 dist，固定用仍带 build/qrcode.min.js 的 1.5.1 -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <!-- 飞书扩展 iframe 会拦 esm.sh / jsDelivr，SDK 与二维码库改为同目录本地文件 -->
+  <script src="./qrcode.js"></script>
   <style>
     :root { color-scheme: light; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f7fb; color: #222; }
@@ -110,6 +110,8 @@
     </section>
   </main>
   <script type="module">
+    import { bitable } from "./lark-base-sdk.js";
+
     const statusEl = document.getElementById("status");
     const payloadEl = document.getElementById("payload");
     let lastLink = "";
@@ -145,8 +147,7 @@
     }
 
     async function loadBitable() {
-      const mod = await import("https://esm.sh/@lark-base-open/js-sdk@0.4.9");
-      return mod.bitable;
+      return bitable;
     }
 
     async function waitBugNumber(table, recordId, idByName) {
