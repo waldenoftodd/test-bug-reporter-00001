@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dino Bug 提单</title>
+  <!-- 1.5.2+ 的 npm 包不再自带浏览器预打包 dist，固定用仍带 build/qrcode.min.js 的 1.5.1 -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f7fb; color: #222; }
+    main { max-width: 720px; margin: 0 auto; padding: 24px; }
+    h1 { font-size: 22px; margin: 0 0 8px; }
+    .hint { color: #666; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    label { display: block; font-size: 13px; margin: 12px 0 6px; }
+    input, select, textarea, button { width: 100%; box-sizing: border-box; font: inherit; }
+    input, select, textarea { border: 1px solid #d9d9e3; border-radius: 8px; padding: 10px 12px; }
+    textarea { min-height: 96px; resize: vertical; }
+    button { margin-top: 16px; min-height: 44px; border: 0; border-radius: 8px; background: #1a7f37; color: #fff; cursor: pointer; }
+    button.secondary { background: #444; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .status { margin-top: 12px; font-size: 13px; color: #8a5a00; white-space: pre-wrap; }
+    .qr { margin-top: 16px; text-align: center; }
+    .payload { font-size: 12px; word-break: break-all; color: #333; margin-top: 8px; }
+    .check { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; }
+    .check input { width: auto; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Dino Bug 提单</h1>
+    <p class="hint">在飞书多维表格的 Bug 表打开本扩展。创建成功后用 App 扫码上传诊断包。本页不包含 app_secret。</p>
+    <section class="card">
+      <label>标题</label>
+      <input id="title" maxlength="200" />
+      <label>场景描述</label>
+      <textarea id="scene" placeholder="当时在哪个页面、看到什么"></textarea>
+      <label>复现步骤</label>
+      <textarea id="steps"></textarea>
+      <div class="row">
+        <div>
+          <label>严重程度</label>
+          <select id="severity">
+            <option>一般</option>
+            <option>致命</option>
+            <option>严重</option>
+            <option>轻微</option>
+          </select>
+        </div>
+        <div>
+          <label>优先级</label>
+          <select id="priority">
+            <option>P1</option>
+            <option>P0</option>
+            <option>P2</option>
+            <option>P3</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>所属模块</label>
+          <select id="module">
+            <option>首页</option>
+            <option>登录</option>
+            <option>课程</option>
+            <option>探索</option>
+            <option>支付</option>
+            <option>个人中心</option>
+            <option>其他</option>
+          </select>
+        </div>
+        <div>
+          <label>包类型</label>
+          <select id="buildType">
+            <option>Debug</option>
+            <option>QA</option>
+            <option>Release</option>
+            <option>Internal</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>平台</label>
+          <select id="platform">
+            <option>Android</option>
+            <option>iOS</option>
+          </select>
+        </div>
+        <div>
+          <label>测试环境</label>
+          <select id="env">
+            <option>QA</option>
+            <option>Pre</option>
+            <option>Production</option>
+          </select>
+        </div>
+      </div>
+      <label class="check"><input id="preview" type="checkbox" /> 仅生成预览二维码（不写 Base，方便先测扫码）</label>
+      <button id="submit" type="button">创建并生成二维码</button>
+      <button id="copy" class="secondary" type="button">复制扫码链接</button>
+      <p id="status" class="status"></p>
+      <div class="qr">
+        <canvas id="qr"></canvas>
+        <p id="payload" class="payload"></p>
+      </div>
+    </section>
+  </main>
+  <script type="module">
+    const statusEl = document.getElementById("status");
+    const payloadEl = document.getElementById("payload");
+    let lastLink = "";
+
+    function uuid() {
+      if (crypto.randomUUID) return crypto.randomUUID();
+      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+
+    function setStatus(text) { statusEl.textContent = text; }
+
+    function qrLink(bugId, recordId) {
+      const params = new URLSearchParams();
+      if (bugId) params.set("bug_id", bugId);
+      params.set("record_id", recordId);
+      params.set("schema", "1");
+      return `dinoenglish://bugreport?${params.toString()}`;
+    }
+
+    async function renderQr(link) {
+      lastLink = link;
+      payloadEl.textContent = link;
+      await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
+    }
+
+    function fieldIdByName(metas) {
+      const map = {};
+      for (const field of metas) map[field.name] = field.id;
+      return map;
+    }
+
+    async function loadBitable() {
+      const mod = await import("https://esm.sh/@lark-base-open/js-sdk@0.4.9");
+      return mod.bitable;
+    }
+
+    async function waitBugNumber(table, recordId, idByName) {
+      const fieldId = idByName["Bug 编号"];
+      if (!fieldId) return "";
+      for (let i = 0; i < 6; i++) {
+        if (i) await new Promise((r) => setTimeout(r, 400));
+        const record = await table.getRecordById(recordId);
+        const value = record?.fields?.[fieldId];
+        const text = Array.isArray(value) ? (value[0]?.text || value[0] || "") : (value?.text || value || "");
+        if (text) return String(text);
+      }
+      return "";
+    }
+
+    async function createInBase(values) {
+      const bitable = await loadBitable();
+      const table = await bitable.base.getActiveTable();
+      const metas = await table.getFieldMetaList();
+      const idByName = fieldIdByName(metas);
+      const required = ["标题", "客户端请求 ID", "附件上传状态"];
+      const missing = required.filter((name) => !idByName[name]);
+      if (missing.length) throw new Error("当前表缺少字段：" + missing.join("、") + "。请在 Bug 表打开本扩展。");
+
+      let userId = "";
+      try {
+        userId = await bitable.bridge.getUserId();
+      } catch (_) {}
+
+      const fields = {};
+      const put = (name, value) => { if (idByName[name] && value != null && value !== "") fields[idByName[name]] = value; };
+      put("标题", values.title);
+      put("场景描述", values.scene || values.title);
+      put("复现步骤", values.steps);
+      put("严重程度", values.severity);
+      put("优先级", values.priority);
+      put("所属模块", values.module);
+      put("平台", values.platform);
+      put("测试环境", values.env);
+      put("包类型", values.buildType || "Debug");
+      put("状态", "待分配");
+      put("客户端请求 ID", values.requestId);
+      put("附件上传状态", "未开始");
+      put("submission_source", "pc_web");
+      put("schema_version", "1.0");
+      if (userId && idByName["提交人"]) fields[idByName["提交人"]] = [{ id: userId }];
+      if (userId) put("提交人 Lark User ID", userId);
+
+      const recordId = await table.addRecord({ fields });
+      const bugId = await waitBugNumber(table, recordId, idByName);
+      return { recordId, bugId };
+    }
+
+    document.getElementById("submit").addEventListener("click", async () => {
+      const title = document.getElementById("title").value.trim();
+      const steps = document.getElementById("steps").value.trim();
+      const preview = document.getElementById("preview").checked;
+      if (!title) { setStatus("请填写标题"); return; }
+      const button = document.getElementById("submit");
+      button.disabled = true;
+      try {
+        if (preview) {
+          const recordId = "recPreview" + uuid().slice(0, 8);
+          const bugId = "BUG-PREVIEW-0001";
+          const link = qrLink(bugId, recordId);
+          await renderQr(link);
+          setStatus("预览二维码已生成。App 会扫到假 record_id，只有真 Base 记录才能上传成功。");
+          return;
+        }
+        setStatus("正在写入当前 Bug 表…");
+        const created = await createInBase({
+          title,
+          scene: document.getElementById("scene").value.trim(),
+          steps,
+          severity: document.getElementById("severity").value,
+          priority: document.getElementById("priority").value,
+          module: document.getElementById("module").value,
+          platform: document.getElementById("platform").value,
+          env: document.getElementById("env").value,
+          buildType: document.getElementById("buildType").value,
+          requestId: uuid(),
+        });
+        const link = qrLink(created.bugId, created.recordId);
+        await renderQr(link);
+        setStatus(`已建单 ${created.bugId || "编号生成中"}\nrecord_id=${created.recordId}\n请用 debug App 摇一摇 → 提 BUG → 扫码。上传后在飞书确认附件为「完整」。`);
+      } catch (error) {
+        setStatus(error.message || String(error));
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    document.getElementById("copy").addEventListener("click", async () => {
+      if (!lastLink) { setStatus("还没有可复制的链接"); return; }
+      await navigator.clipboard.writeText(lastLink);
+      setStatus("已复制扫码链接");
+    });
+  </script>
+</body>
+</html>
