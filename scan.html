@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dino Bug 扫码上传</title>
+  <script src="./qrcode.js"></script>
+  <style>
+    :root { color-scheme: light; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #f6f7fb; color: #222; }
+    main { max-width: 420px; margin: 0 auto; padding: 20px; }
+    h1 { font-size: 20px; margin: 0 0 8px; }
+    .hint { color: #666; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
+    .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); text-align: center; }
+    .id { font-size: 15px; font-weight: 600; margin: 0 0 4px; word-break: break-all; }
+    .sub { font-size: 12px; color: #666; word-break: break-all; margin: 0 0 12px; }
+    .status { font-size: 13px; color: #8a5a00; white-space: pre-wrap; min-height: 1.4em; }
+    .qr { margin: 8px 0; }
+    .qr.hidden { display: none; }
+    button { margin-top: 12px; min-height: 40px; width: 100%; border: 0; border-radius: 8px; background: #444; color: #fff; font: inherit; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .payload { font-size: 11px; word-break: break-all; color: #888; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>扫码上传诊断包</h1>
+    <p class="hint">在 Bug 表点选一条已有记录，用 debug App 扫码补传。本页不建单、不改字段。App 只认 record_id。</p>
+    <section class="card">
+      <p id="bugId" class="id">未选中记录</p>
+      <p id="recordId" class="sub"></p>
+      <p id="status" class="status">请在表格里点选一行。</p>
+      <div id="qrWrap" class="qr hidden">
+        <canvas id="qr"></canvas>
+        <p id="payload" class="payload"></p>
+      </div>
+      <button id="copy" type="button" disabled>复制扫码链接</button>
+    </section>
+  </main>
+  <script type="module">
+    import { bitable } from "./lark-base-sdk.js";
+
+    const bugIdEl = document.getElementById("bugId");
+    const recordIdEl = document.getElementById("recordId");
+    const statusEl = document.getElementById("status");
+    const qrWrap = document.getElementById("qrWrap");
+    const payloadEl = document.getElementById("payload");
+    const copyBtn = document.getElementById("copy");
+    let lastLink = "";
+    let lastRecordId = "";
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function cellText(value) {
+      if (value == null || value === "") return "";
+      if (Array.isArray(value)) {
+        const first = value[0];
+        if (first == null) return "";
+        if (typeof first === "string") return first;
+        return first.text || first.name || String(first.id || "");
+      }
+      if (typeof value === "object") return value.text || value.name || "";
+      return String(value);
+    }
+
+    function qrLink(bugId, recordId) {
+      const params = new URLSearchParams();
+      if (bugId) params.set("bug_id", bugId);
+      params.set("record_id", recordId);
+      params.set("schema", "1");
+      return `dinoenglish://bugreport?${params.toString()}`;
+    }
+
+    async function fieldIdByName(table) {
+      const metas = await table.getFieldMetaList();
+      const map = {};
+      for (const field of metas) map[field.name] = field.id;
+      return map;
+    }
+
+    async function resolveRecordIds() {
+      const sel = await bitable.base.getSelection();
+      if (sel.recordId) return { tableId: sel.tableId, recordIds: [sel.recordId] };
+
+      const table = sel.tableId
+        ? await bitable.base.getTableById(sel.tableId)
+        : await bitable.base.getActiveTable();
+      const view = sel.viewId
+        ? await table.getViewById(sel.viewId)
+        : await table.getActiveView();
+      const recordIds = typeof view.getSelectedRecordIdList === "function"
+        ? await view.getSelectedRecordIdList()
+        : [];
+      return { tableId: table.id, recordIds: recordIds || [] };
+    }
+
+    async function renderSelected() {
+      try {
+        const { tableId, recordIds } = await resolveRecordIds();
+        if (!recordIds.length) {
+          lastLink = "";
+          lastRecordId = "";
+          bugIdEl.textContent = "未选中记录";
+          recordIdEl.textContent = "";
+          payloadEl.textContent = "";
+          qrWrap.classList.add("hidden");
+          copyBtn.disabled = true;
+          setStatus("请在表格里点选一行。打开记录卡片也可以。");
+          return;
+        }
+        if (recordIds.length > 1) {
+          lastLink = "";
+          lastRecordId = "";
+          bugIdEl.textContent = "选中了 " + recordIds.length + " 条";
+          recordIdEl.textContent = "";
+          payloadEl.textContent = "";
+          qrWrap.classList.add("hidden");
+          copyBtn.disabled = true;
+          setStatus("请只选一条，再扫码。");
+          return;
+        }
+
+        const recordId = recordIds[0];
+        if (recordId === lastRecordId && lastLink) return;
+
+        const table = tableId
+          ? await bitable.base.getTableById(tableId)
+          : await bitable.base.getActiveTable();
+        const idByName = await fieldIdByName(table);
+        const record = await table.getRecordById(recordId);
+        const fields = record?.fields || {};
+        const bugId = cellText(fields[idByName["Bug 编号"]]);
+
+        const link = qrLink(bugId, recordId);
+        lastLink = link;
+        lastRecordId = recordId;
+        bugIdEl.textContent = bugId || "编号生成中";
+        recordIdEl.textContent = recordId;
+        payloadEl.textContent = link;
+        qrWrap.classList.remove("hidden");
+        copyBtn.disabled = false;
+        await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
+        setStatus("用 debug App：摇一摇 → 提 BUG → 扫码上传。");
+      } catch (error) {
+        lastLink = "";
+        lastRecordId = "";
+        qrWrap.classList.add("hidden");
+        copyBtn.disabled = true;
+        setStatus(error.message || String(error));
+      }
+    }
+
+    copyBtn.addEventListener("click", async () => {
+      if (!lastLink) return;
+      await navigator.clipboard.writeText(lastLink);
+      setStatus("已复制扫码链接");
+    });
+
+    bitable.base.onSelectionChange(() => {
+      renderSelected();
+    });
+    renderSelected();
+  </script>
+</body>
+</html>
