@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dino Bug 提单</title>
-  <!-- 飞书扩展 iframe 会拦 esm.sh / jsDelivr，SDK 与二维码库改为同目录本地文件 -->
+  <!-- Lark 扩展 iframe 会拦 esm.sh / jsDelivr，SDK 与二维码库改为同目录本地文件 -->
   <script src="./qrcode.js"></script>
   <style>
     :root { color-scheme: light; }
@@ -31,7 +31,7 @@
 <body>
   <main>
     <h1>Dino Bug 提单</h1>
-    <p class="hint">在飞书多维表格的 Bug 表打开本扩展。创建成功后用 App 扫码上传诊断包。本页不包含 app_secret。</p>
+    <p class="hint">在 Lark 多维表格的 Bug 表打开本扩展。创建成功后用 App 扫码上传诊断包。本页不包含 app_secret。</p>
     <section class="card">
       <label>标题</label>
       <input id="title" maxlength="200" />
@@ -232,7 +232,7 @@
         });
         const link = qrLink(created.bugId, created.recordId);
         await renderQr(link);
-        setStatus(`已建单 ${created.bugId || "编号生成中"}\nrecord_id=${created.recordId}\n请用 debug App 摇一摇 → 提 BUG → 扫码。上传后在飞书确认附件为「完整」。`);
+        setStatus(`已建单 ${created.bugId || "编号生成中"}\nrecord_id=${created.recordId}\n请用 debug App 摇一摇 → 提 BUG → 扫码。上传后在 Lark 确认附件为「完整」。`);
       } catch (error) {
         setStatus(error.message || String(error));
       } finally {
