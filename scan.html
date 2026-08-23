@@ -15,6 +15,15 @@
     .id { font-size: 15px; font-weight: 600; margin: 0 0 4px; word-break: break-all; }
     .sub { font-size: 12px; color: #666; word-break: break-all; margin: 0 0 12px; }
     .status { font-size: 13px; color: #8a5a00; white-space: pre-wrap; min-height: 1.4em; }
+    .result {
+      display: none; margin: 0 0 12px; padding: 10px 12px; border-radius: 8px;
+      font-size: 15px; font-weight: 600;
+    }
+    .result.show { display: block; }
+    .result.wait { background: #fff6e5; color: #8a5a00; }
+    .result.uploading { background: #e8f1ff; color: #1d4ed8; }
+    .result.ok { background: #e7f6ec; color: #1a7f37; }
+    .result.fail { background: #fdeaea; color: #b42318; }
     .qr { margin: 8px 0; }
     .qr.hidden { display: none; }
     button { margin-top: 12px; min-height: 40px; width: 100%; border: 0; border-radius: 8px; background: #444; color: #fff; font: inherit; cursor: pointer; }
@@ -29,6 +38,7 @@
     <section class="card">
       <p id="bugId" class="id">未选中记录</p>
       <p id="recordId" class="sub"></p>
+      <p id="result" class="result"></p>
       <p id="status" class="status">请在表格里点选一行。</p>
       <div id="qrWrap" class="qr hidden">
         <canvas id="qr"></canvas>
@@ -45,12 +55,48 @@
     const statusEl = document.getElementById("status");
     const qrWrap = document.getElementById("qrWrap");
     const payloadEl = document.getElementById("payload");
+    const resultEl = document.getElementById("result");
     const copyBtn = document.getElementById("copy");
     let lastLink = "";
     let lastRecordId = "";
+    let pollTimer = 0;
+    let stopRecordWatch = null;
 
     function setStatus(text) {
       statusEl.textContent = text;
+    }
+
+    function setResult(kind, text) {
+      resultEl.className = "result" + (text ? " show " + kind : "");
+      resultEl.textContent = text;
+    }
+
+    function isTerminalStatus(status) {
+      return status === "完整" || status === "部分失败" || status === "已过期";
+    }
+
+    function attachFeedback(status) {
+      if (status === "完整") {
+        setResult("ok", "诊断包已上传，附件为「完整」");
+        setStatus("可以关掉本页，到表里核对截图和 zip。");
+        return;
+      }
+      if (status === "部分失败") {
+        setResult("fail", "上传部分失败，请在 App 里点「重试待传队列」");
+        setStatus("飞书附件未齐，不要当作交卷成功。");
+        return;
+      }
+      if (status === "已过期") {
+        setResult("fail", "这条记录的附件已过期，请重新扫码上传");
+        return;
+      }
+      if (status === "上传中") {
+        setResult("uploading", "正在上传，请保持 App 在前台");
+        setStatus("传到「完整」前不要杀进程。");
+        return;
+      }
+      setResult("wait", status ? "附件状态：" + status : "等待扫码上传");
+      setStatus("用 debug App：摇一摇 → 提 BUG → 扫码。上传后本页会变成「完整」。");
     }
 
     function cellText(value) {
@@ -96,38 +142,78 @@
       return { tableId: table.id, recordIds: recordIds || [] };
     }
 
+    function stopWatch() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = 0;
+      }
+      if (typeof stopRecordWatch === "function") {
+        stopRecordWatch();
+        stopRecordWatch = null;
+      }
+    }
+
+    async function refreshAttachStatus(table, recordId) {
+      const idByName = await fieldIdByName(table);
+      const fieldId = idByName["附件上传状态"];
+      if (!fieldId) {
+        setResult("wait", "当前表没有「附件上传状态」字段");
+        return;
+      }
+      const record = await table.getRecordById(recordId);
+      const status = cellText(record?.fields?.[fieldId]);
+      attachFeedback(status);
+      if (isTerminalStatus(status)) stopWatch();
+    }
+
+    function startWatch(table, recordId) {
+      stopWatch();
+      refreshAttachStatus(table, recordId).catch((error) => setStatus(error.message || String(error)));
+      pollTimer = setInterval(() => {
+        refreshAttachStatus(table, recordId).catch(() => {});
+      }, 2000);
+      if (typeof table.onRecordModify === "function") {
+        stopRecordWatch = table.onRecordModify(() => {
+          refreshAttachStatus(table, recordId).catch(() => {});
+        });
+      }
+    }
+
+    function resetView(title, message) {
+      stopWatch();
+      lastLink = "";
+      lastRecordId = "";
+      bugIdEl.textContent = title;
+      recordIdEl.textContent = "";
+      payloadEl.textContent = "";
+      qrWrap.classList.add("hidden");
+      copyBtn.disabled = true;
+      setResult("", "");
+      setStatus(message);
+    }
+
     async function renderSelected() {
       try {
         const { tableId, recordIds } = await resolveRecordIds();
         if (!recordIds.length) {
-          lastLink = "";
-          lastRecordId = "";
-          bugIdEl.textContent = "未选中记录";
-          recordIdEl.textContent = "";
-          payloadEl.textContent = "";
-          qrWrap.classList.add("hidden");
-          copyBtn.disabled = true;
-          setStatus("请在表格里点选一行。打开记录卡片也可以。");
+          resetView("未选中记录", "请在表格里点选一行。打开记录卡片也可以。");
           return;
         }
         if (recordIds.length > 1) {
-          lastLink = "";
-          lastRecordId = "";
-          bugIdEl.textContent = "选中了 " + recordIds.length + " 条";
-          recordIdEl.textContent = "";
-          payloadEl.textContent = "";
-          qrWrap.classList.add("hidden");
-          copyBtn.disabled = true;
-          setStatus("请只选一条，再扫码。");
+          resetView("选中了 " + recordIds.length + " 条", "请只选一条，再扫码。");
           return;
         }
 
         const recordId = recordIds[0];
-        if (recordId === lastRecordId && lastLink) return;
-
         const table = tableId
           ? await bitable.base.getTableById(tableId)
           : await bitable.base.getActiveTable();
+
+        if (recordId === lastRecordId && lastLink) {
+          await refreshAttachStatus(table, recordId);
+          return;
+        }
+
         const idByName = await fieldIdByName(table);
         const record = await table.getRecordById(recordId);
         const fields = record?.fields || {};
@@ -142,13 +228,10 @@
         qrWrap.classList.remove("hidden");
         copyBtn.disabled = false;
         await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
-        setStatus("用 debug App：摇一摇 → 提 BUG → 扫码上传。");
+        attachFeedback(cellText(fields[idByName["附件上传状态"]]));
+        startWatch(table, recordId);
       } catch (error) {
-        lastLink = "";
-        lastRecordId = "";
-        qrWrap.classList.add("hidden");
-        copyBtn.disabled = true;
-        setStatus(error.message || String(error));
+        resetView("读取失败", error.message || String(error));
       }
     }
 
