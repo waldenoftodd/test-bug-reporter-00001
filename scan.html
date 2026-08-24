@@ -12,8 +12,7 @@
     h1 { font-size: 20px; margin: 0 0 8px; }
     .hint { color: #666; font-size: 13px; line-height: 1.5; margin-bottom: 16px; }
     .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,.06); text-align: center; }
-    .id { font-size: 15px; font-weight: 600; margin: 0 0 4px; word-break: break-all; }
-    .sub { font-size: 12px; color: #666; word-break: break-all; margin: 0 0 12px; }
+    .id { font-size: 15px; font-weight: 600; margin: 0 0 12px; word-break: break-all; }
     .status { font-size: 13px; color: #8a5a00; white-space: pre-wrap; min-height: 1.4em; }
     .result {
       display: none; margin: 0 0 12px; padding: 10px 12px; border-radius: 8px;
@@ -21,42 +20,33 @@
     }
     .result.show { display: block; }
     .result.wait { background: #fff6e5; color: #8a5a00; }
-    .result.uploading { background: #e8f1ff; color: #1d4ed8; }
     .result.ok { background: #e7f6ec; color: #1a7f37; }
     .result.fail { background: #fdeaea; color: #b42318; }
     .qr { margin: 8px 0; }
     .qr.hidden { display: none; }
-    button { margin-top: 12px; min-height: 40px; width: 100%; border: 0; border-radius: 8px; background: #444; color: #fff; font: inherit; cursor: pointer; }
-    button:disabled { opacity: .45; cursor: not-allowed; }
-    .payload { font-size: 11px; word-break: break-all; color: #888; margin-top: 8px; }
   </style>
 </head>
 <body>
   <main>
     <h1>扫码上传诊断包</h1>
-    <p class="hint">在 Bug 表点选一条已有记录，用 debug App 扫码补传。本页不建单。上传是否成功看「截图」里有没有诊断包。</p>
+    <p class="hint">在表里点选一条记录，用 debug App 扫码补传。本页只出码，不建单、不展示链接。</p>
     <section class="card">
       <p id="bugId" class="id">未选中记录</p>
-      <p id="recordId" class="sub"></p>
       <p id="result" class="result"></p>
       <p id="status" class="status">请在表格里点选一行。</p>
       <div id="qrWrap" class="qr hidden">
         <canvas id="qr"></canvas>
-        <p id="payload" class="payload"></p>
       </div>
-      <button id="copy" type="button" disabled>复制扫码链接</button>
     </section>
   </main>
   <script type="module">
     import { bitable } from "./lark-base-sdk.js";
 
     const bugIdEl = document.getElementById("bugId");
-    const recordIdEl = document.getElementById("recordId");
     const statusEl = document.getElementById("status");
     const qrWrap = document.getElementById("qrWrap");
-    const payloadEl = document.getElementById("payload");
     const resultEl = document.getElementById("result");
-    const copyBtn = document.getElementById("copy");
+    const fieldMetaCache = new Map();
     let lastLink = "";
     let lastRecordId = "";
     let pollTimer = 0;
@@ -93,11 +83,13 @@
     function attachFeedback(hasZip) {
       if (hasZip) {
         setResult("ok", "诊断包已上传");
-        setStatus("「截图」里已有 diagnostic.zip，可以关掉本页。");
+        setStatus("可以关掉本页。");
+        qrWrap.classList.add("hidden");
         return;
       }
       setResult("wait", "等待扫码上传");
-      setStatus("用 debug App：摇一摇 → 提 BUG → 扫码。传到「截图」后本页会变绿。");
+      setStatus("摇一摇 → 上传诊断包 → 扫码。传到「截图」后本页会变绿。");
+      if (lastLink) qrWrap.classList.remove("hidden");
     }
 
     function cellText(value) {
@@ -121,9 +113,12 @@
     }
 
     async function fieldIdByName(table) {
+      const cached = fieldMetaCache.get(table.id);
+      if (cached) return cached;
       const metas = await table.getFieldMetaList();
       const map = {};
       for (const field of metas) map[field.name] = field.id;
+      fieldMetaCache.set(table.id, map);
       return map;
     }
 
@@ -158,8 +153,9 @@
       const idByName = await fieldIdByName(table);
       const fieldId = idByName["截图"];
       if (!fieldId) {
-        setResult("wait", "当前表没有「截图」字段");
+        setResult("fail", "当前表没有「截图」字段");
         setStatus("无法判断诊断包是否已上传。");
+        qrWrap.classList.add("hidden");
         stopWatch();
         return;
       }
@@ -187,10 +183,7 @@
       lastLink = "";
       lastRecordId = "";
       bugIdEl.textContent = title;
-      recordIdEl.textContent = "";
-      payloadEl.textContent = "";
       qrWrap.classList.add("hidden");
-      copyBtn.disabled = true;
       setResult("", "");
       setStatus(message);
     }
@@ -221,15 +214,10 @@
         const record = await table.getRecordById(recordId);
         const fields = record?.fields || {};
         const bugId = cellText(fields[idByName["Bug 编号"]]);
-
         const link = qrLink(bugId, recordId);
         lastLink = link;
         lastRecordId = recordId;
         bugIdEl.textContent = bugId || "编号生成中";
-        recordIdEl.textContent = recordId;
-        payloadEl.textContent = link;
-        qrWrap.classList.remove("hidden");
-        copyBtn.disabled = false;
         await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
         attachFeedback(hasDiagnosticZip(fields[idByName["截图"]]));
         startWatch(table, recordId);
@@ -237,12 +225,6 @@
         resetView("读取失败", error.message || String(error));
       }
     }
-
-    copyBtn.addEventListener("click", async () => {
-      if (!lastLink) return;
-      await navigator.clipboard.writeText(lastLink);
-      setStatus("已复制扫码链接");
-    });
 
     bitable.base.onSelectionChange(() => {
       renderSelected();
