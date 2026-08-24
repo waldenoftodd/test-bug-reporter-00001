@@ -57,12 +57,7 @@
       font-size: 13px;
       font-weight: 600;
     }
-    .chip::before {
-      content: "";
-      width: 8px; height: 8px; border-radius: 50%;
-      background: #c5d1cb;
-    }
-    .chip.ready::before { background: var(--brand); }
+    .chip.hidden { display: none; }
     .qr {
       display: grid; place-items: center;
       margin: 0 auto 16px;
@@ -74,19 +69,13 @@
     }
     .qr.hidden { display: none; }
     .qr canvas { display: block; border-radius: 8px; }
-    .panel { border-radius: 14px; padding: 16px 14px; }
+    .panel { border-radius: 14px; padding: 12px 14px; }
     .panel.idle { background: #f7faf8; color: var(--muted); }
     .panel.wait { background: var(--wait-bg); color: var(--wait-ink); }
     .panel.ok { background: var(--brand-soft); color: #146c3d; }
     .panel.fail { background: var(--fail-bg); color: var(--fail-ink); }
-    .mark {
-      width: 44px; height: 44px; margin: 0 auto 10px;
-      border-radius: 50%; background: var(--brand); color: #fff;
-      display: none; place-items: center;
-    }
-    .panel.ok .mark { display: grid; }
-    .headline { margin: 0; font-size: 16px; font-weight: 700; }
-    .sub { margin: 6px 0 0; font-size: 13px; line-height: 1.5; font-weight: 400; opacity: .9; }
+    .headline { margin: 0; font-size: 15px; font-weight: 700; }
+    .sub { margin: 4px 0 0; font-size: 13px; line-height: 1.5; font-weight: 400; opacity: .9; }
   </style>
 </head>
 <body>
@@ -109,16 +98,11 @@
       </div>
     </header>
     <section class="card">
-      <p id="bugId" class="chip">未选中记录</p>
+      <p id="bugId" class="chip hidden"></p>
       <div id="qrWrap" class="qr hidden">
         <canvas id="qr"></canvas>
       </div>
       <div id="panel" class="panel idle">
-        <div class="mark" aria-hidden="true">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-            <path d="M5 12.5l4.2 4.2L19 7.5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
         <p id="headline" class="headline">请选择记录</p>
         <p id="sub" class="sub">在表格里点选一行，或打开记录卡片。</p>
       </div>
@@ -166,11 +150,22 @@
     function attachFeedback(hasZip) {
       if (hasZip) {
         setPanel("ok", "诊断包已上传", "可以关掉本页。");
-        qrWrap.classList.add("hidden");
+      } else {
+        setPanel("wait", "等待扫码", "摇一摇 → 上传诊断包 → 扫码。");
+      }
+      if (lastLink) qrWrap.classList.remove("hidden");
+    }
+
+    function setChip(text) {
+      if (!text) {
+        bugIdEl.textContent = "";
+        bugIdEl.classList.add("hidden");
+        bugIdEl.classList.remove("ready");
         return;
       }
-      setPanel("wait", "等待扫码", "摇一摇 → 上传诊断包 → 扫码。传到「截图」后这里会变成已上传。");
-      if (lastLink) qrWrap.classList.remove("hidden");
+      bugIdEl.textContent = text;
+      bugIdEl.classList.remove("hidden");
+      bugIdEl.classList.add("ready");
     }
 
     function cellText(value) {
@@ -188,7 +183,7 @@
     function recordLabel(fields, idByName) {
       return cellText(fields[idByName["Bug 编号"]])
         || cellText(fields[idByName["标题"]])
-        || "已选中记录";
+        || "";
     }
 
     function qrLink(bugId, recordId) {
@@ -241,7 +236,7 @@
       const fieldId = idByName["截图"];
       if (!fieldId) {
         setPanel("fail", "当前表没有「截图」字段", "无法判断诊断包是否已上传。");
-        qrWrap.classList.add("hidden");
+        if (lastLink) qrWrap.classList.remove("hidden");
         stopWatch();
         return;
       }
@@ -270,8 +265,7 @@
       stopWatch();
       lastLink = "";
       lastRecordId = "";
-      bugIdEl.textContent = title;
-      bugIdEl.classList.remove("ready");
+      setChip("");
       qrWrap.classList.add("hidden");
       setPanel("idle", title, message);
     }
@@ -305,8 +299,7 @@
         const link = qrLink(bugId, recordId);
         lastLink = link;
         lastRecordId = recordId;
-        bugIdEl.textContent = recordLabel(fields, idByName);
-        bugIdEl.classList.add("ready");
+        setChip(recordLabel(fields, idByName));
         await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
         attachFeedback(hasDiagnosticZip(fields[idByName["截图"]]));
         startWatch(table, recordId);
