@@ -25,7 +25,9 @@
     html, body { height: 100%; }
     body {
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
       background:
         radial-gradient(900px 380px at 50% -120px, #ccefdc 0%, transparent 70%),
         var(--bg);
@@ -55,9 +57,22 @@
       place-items: center;
       box-shadow: 0 8px 18px rgba(22, 163, 74, .28);
     }
-    .build { margin: 8px 0 0; font-size: 11px; color: #9aa59e; }
-    h1 { font-size: 22px; line-height: 1.25; margin: 0 0 4px; letter-spacing: -.02em; }
-    .hint { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .build { margin: 8px 0 0; font-size: 11px; color: #9aa59e; letter-spacing: .08em; }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1.4;
+      margin: 0 0 6px;
+      letter-spacing: .06em;
+    }
+    .hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 1.7;
+      letter-spacing: .08em;
+    }
     .card {
       flex: 1;
       display: flex;
@@ -158,8 +173,21 @@
     .panel.fail .panel-icon::before { transform: rotate(45deg); }
     .panel.fail .panel-icon::after { transform: rotate(-45deg); }
     .panel-copy { min-width: 0; }
-    .headline { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
-    .sub { margin: 6px 0 0; font-size: 13px; line-height: 1.5; font-weight: 400; opacity: .88; }
+    .headline {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 500;
+      line-height: 1.55;
+      letter-spacing: .12em;
+    }
+    .sub {
+      margin: 8px 0 0;
+      font-size: 14px;
+      line-height: 1.75;
+      font-weight: 400;
+      letter-spacing: .14em;
+      opacity: .82;
+    }
   </style>
 </head>
 <body>
@@ -190,10 +218,10 @@
         <span class="panel-icon" aria-hidden="true"></span>
         <div class="panel-copy">
           <p id="headline" class="headline">请选择记录</p>
-          <p id="sub" class="sub">在表格里点选一行。</p>
+          <p id="sub" class="sub">在表格里点选一行</p>
         </div>
       </div>
-      <p class="build">v20260824d</p>
+      <p class="build">v20260824e</p>
     </section>
   </main>
   <script type="module">
@@ -362,7 +390,7 @@
       try {
         const { tableId, recordIds } = await resolveRecordIds();
         if (!recordIds.length) {
-          resetView("未选中记录", "在表格里点选一行。");
+          resetView("未选中记录", "在表格里点选一行");
           return;
         }
         if (recordIds.length > 1) {
