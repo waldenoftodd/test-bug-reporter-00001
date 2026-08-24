@@ -34,7 +34,7 @@
 <body>
   <main>
     <h1>扫码上传诊断包</h1>
-    <p class="hint">在 Bug 表点选一条已有记录，用 debug App 扫码补传。本页不建单、不改字段。App 只认 record_id。</p>
+    <p class="hint">在 Bug 表点选一条已有记录，用 debug App 扫码补传。本页不建单。上传是否成功看「截图」里有没有诊断包。</p>
     <section class="card">
       <p id="bugId" class="id">未选中记录</p>
       <p id="recordId" class="sub"></p>
@@ -71,32 +71,33 @@
       resultEl.textContent = text;
     }
 
-    function isTerminalStatus(status) {
-      return status === "完整" || status === "部分失败" || status === "已过期";
+    function attachmentName(item) {
+      if (item == null) return "";
+      if (typeof item === "string") return item;
+      return String(item.name || item.fileName || item.text || "");
     }
 
-    function attachFeedback(status) {
-      if (status === "完整") {
-        setResult("ok", "诊断包已上传，附件为「完整」");
-        setStatus("可以关掉本页，到表里核对截图和 zip。");
+    function isDiagnosticZip(item) {
+      const name = attachmentName(item).toLowerCase();
+      if (name === "diagnostic.zip" || name.endsWith(".zip")) return true;
+      const mime = String(item && (item.mimeType || item.type) || "").toLowerCase();
+      return mime.includes("zip");
+    }
+
+    function hasDiagnosticZip(value) {
+      if (value == null || value === "") return false;
+      const items = Array.isArray(value) ? value : [value];
+      return items.some(isDiagnosticZip);
+    }
+
+    function attachFeedback(hasZip) {
+      if (hasZip) {
+        setResult("ok", "诊断包已上传");
+        setStatus("「截图」里已有 diagnostic.zip，可以关掉本页。");
         return;
       }
-      if (status === "部分失败") {
-        setResult("fail", "上传部分失败，请在 App 里点「重试待传队列」");
-        setStatus("Lark 附件未齐，不要当作交卷成功。");
-        return;
-      }
-      if (status === "已过期") {
-        setResult("fail", "这条记录的附件已过期，请重新扫码上传");
-        return;
-      }
-      if (status === "上传中") {
-        setResult("uploading", "正在上传，请保持 App 在前台");
-        setStatus("传到「完整」前不要杀进程。");
-        return;
-      }
-      setResult("wait", status ? "附件状态：" + status : "等待扫码上传");
-      setStatus("用 debug App：摇一摇 → 提 BUG → 扫码。上传后本页会变成「完整」。");
+      setResult("wait", "等待扫码上传");
+      setStatus("用 debug App：摇一摇 → 提 BUG → 扫码。传到「截图」后本页会变绿。");
     }
 
     function cellText(value) {
@@ -155,15 +156,17 @@
 
     async function refreshAttachStatus(table, recordId) {
       const idByName = await fieldIdByName(table);
-      const fieldId = idByName["附件上传状态"];
+      const fieldId = idByName["截图"];
       if (!fieldId) {
-        setResult("wait", "当前表没有「附件上传状态」字段");
+        setResult("wait", "当前表没有「截图」字段");
+        setStatus("无法判断诊断包是否已上传。");
+        stopWatch();
         return;
       }
       const record = await table.getRecordById(recordId);
-      const status = cellText(record?.fields?.[fieldId]);
-      attachFeedback(status);
-      if (isTerminalStatus(status)) stopWatch();
+      const found = hasDiagnosticZip(record?.fields?.[fieldId]);
+      attachFeedback(found);
+      if (found) stopWatch();
     }
 
     function startWatch(table, recordId) {
@@ -228,7 +231,7 @@
         qrWrap.classList.remove("hidden");
         copyBtn.disabled = false;
         await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
-        attachFeedback(cellText(fields[idByName["附件上传状态"]]));
+        attachFeedback(hasDiagnosticZip(fields[idByName["截图"]]));
         startWatch(table, recordId);
       } catch (error) {
         resetView("读取失败", error.message || String(error));
