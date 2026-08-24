@@ -3,86 +3,169 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <title>扫码上传诊断包</title>
   <script src="./qrcode.js"></script>
   <style>
     :root {
-      --bg: #eef3f0;
+      --bg: #e8f3ec;
       --card: #ffffff;
-      --ink: #1c2420;
-      --muted: #66716b;
-      --line: #e3ece7;
-      --brand: #1a9f5c;
-      --brand-soft: #e7f6ec;
-      --wait-bg: #fff6e5;
-      --wait-ink: #8a5a00;
+      --ink: #15241c;
+      --muted: #5f6f66;
+      --line: #dce8e1;
+      --brand: #16a34a;
+      --brand-soft: #e8f8ee;
+      --wait-bg: #fff7e8;
+      --wait-ink: #9a6700;
       --fail-bg: #fdeaea;
       --fail-ink: #b42318;
-      --shadow: 0 12px 40px rgba(28, 36, 32, .08);
+      --shadow: 0 16px 48px rgba(21, 36, 28, .08);
     }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
-      min-height: 100vh;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
       background:
-        radial-gradient(1200px 400px at 50% -80px, #d9f3e4 0%, transparent 70%),
+        radial-gradient(900px 380px at 50% -120px, #ccefdc 0%, transparent 70%),
         var(--bg);
       color: var(--ink);
     }
-    main { max-width: 420px; margin: 0 auto; padding: 28px 20px 40px; }
-    .hero { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px; }
-    .logo {
-      flex: 0 0 40px; height: 40px; border-radius: 12px;
-      background: var(--brand); color: #fff;
-      display: grid; place-items: center;
+    main {
+      width: min(520px, 100%);
+      min-height: 100%;
+      margin: 0 auto;
+      padding: 20px 16px 24px;
+      display: flex;
+      flex-direction: column;
     }
-    h1 { font-size: 20px; line-height: 1.3; margin: 0 0 4px; }
-    .hint { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .hero {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .logo {
+      flex: 0 0 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, #22c55e, var(--brand));
+      color: #fff;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 8px 18px rgba(22, 163, 74, .28);
+    }
+    h1 { font-size: 22px; line-height: 1.25; margin: 0 0 4px; letter-spacing: -.02em; }
+    .hint { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
     .card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 22px;
+      min-height: 560px;
+      padding: 32px 28px;
       background: var(--card);
-      border-radius: 20px;
-      padding: 22px 20px 24px;
+      border: 1px solid rgba(22, 163, 74, .08);
+      border-radius: 24px;
       box-shadow: var(--shadow);
       text-align: center;
     }
     .chip {
-      display: inline-flex; align-items: center; gap: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       max-width: 100%;
-      margin: 0 0 16px;
-      padding: 6px 12px;
+      margin: 0;
+      padding: 8px 14px;
       border-radius: 999px;
-      background: #f3f7f4;
+      background: #f3faf6;
       color: #3d4a44;
       font-size: 13px;
       font-weight: 600;
     }
     .chip.hidden { display: none; }
     .qr {
-      display: grid; place-items: center;
-      margin: 0 auto 16px;
-      padding: 14px;
-      width: 268px;
-      border-radius: 18px;
-      background: #f7faf8;
+      display: grid;
+      place-items: center;
+      width: min(320px, 100%);
+      padding: 18px;
+      border-radius: 22px;
+      background: #f6fbf8;
       border: 1px solid var(--line);
+      box-shadow: inset 0 1px 0 #fff;
     }
     .qr.hidden { display: none; }
-    .qr canvas { display: block; border-radius: 8px; }
-    .panel { border-radius: 14px; padding: 12px 14px; }
-    .panel.idle { background: #f7faf8; color: var(--muted); }
+    .qr canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
+    .panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      width: 100%;
+      min-height: 96px;
+      padding: 22px 20px;
+      border-radius: 20px;
+    }
+    .panel-icon {
+      position: relative;
+      flex: 0 0 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: none;
+      place-items: center;
+    }
+    .panel.ok .panel-icon,
+    .panel.wait .panel-icon,
+    .panel.fail .panel-icon { display: grid; }
+    .panel.idle { background: #f4f8f6; color: var(--muted); }
     .panel.wait { background: var(--wait-bg); color: var(--wait-ink); }
-    .panel.ok { background: var(--brand-soft); color: #146c3d; }
+    .panel.ok { background: var(--brand-soft); color: #15803d; }
     .panel.fail { background: var(--fail-bg); color: var(--fail-ink); }
-    .headline { margin: 0; font-size: 15px; font-weight: 700; }
-    .sub { margin: 4px 0 0; font-size: 13px; line-height: 1.5; font-weight: 400; opacity: .9; }
+    .panel.wait .panel-icon {
+      background: #f5c14a;
+      box-shadow: 0 0 0 7px rgba(245, 193, 74, .22);
+    }
+    .panel.wait .panel-icon::after {
+      content: "";
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #fff;
+    }
+    .panel.ok .panel-icon { background: var(--brand); }
+    .panel.ok .panel-icon::after {
+      content: "";
+      width: 14px;
+      height: 8px;
+      margin-top: -3px;
+      border-left: 3px solid #fff;
+      border-bottom: 3px solid #fff;
+      transform: rotate(-45deg);
+    }
+    .panel.fail .panel-icon { background: var(--fail-ink); }
+    .panel.fail .panel-icon::before,
+    .panel.fail .panel-icon::after {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 2.5px;
+      background: #fff;
+      border-radius: 2px;
+    }
+    .panel.fail .panel-icon::before { transform: rotate(45deg); }
+    .panel.fail .panel-icon::after { transform: rotate(-45deg); }
+    .panel-copy { min-width: 0; }
+    .headline { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+    .sub { margin: 6px 0 0; font-size: 13px; line-height: 1.5; font-weight: 400; opacity: .88; }
   </style>
 </head>
 <body>
   <main>
     <header class="hero">
       <div class="logo" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
           <rect x="3" y="3" width="7" height="7" rx="1.5" fill="currentColor"/>
           <rect x="14" y="3" width="7" height="7" rx="1.5" fill="currentColor"/>
           <rect x="3" y="14" width="7" height="7" rx="1.5" fill="currentColor"/>
@@ -94,7 +177,7 @@
       </div>
       <div>
         <h1>扫码上传诊断包</h1>
-        <p class="hint">在表里点选一条记录，用 debug App 扫码。本页只出码，不展示链接。</p>
+        <p class="hint">在表里点选一条记录，用 debug App 扫码。</p>
       </div>
     </header>
     <section class="card">
@@ -103,8 +186,11 @@
         <canvas id="qr"></canvas>
       </div>
       <div id="panel" class="panel idle">
-        <p id="headline" class="headline">请选择记录</p>
-        <p id="sub" class="sub">在表格里点选一行，或打开记录卡片。</p>
+        <span class="panel-icon" aria-hidden="true"></span>
+        <div class="panel-copy">
+          <p id="headline" class="headline">请选择记录</p>
+          <p id="sub" class="sub">在表格里点选一行，或打开记录卡片。</p>
+        </div>
       </div>
     </section>
   </main>
@@ -125,7 +211,8 @@
     function setPanel(kind, title, sub) {
       panelEl.className = "panel " + kind;
       headlineEl.textContent = title;
-      subEl.textContent = sub;
+      subEl.textContent = sub || "";
+      subEl.style.display = sub ? "" : "none";
     }
 
     function attachmentName(item) {
@@ -149,11 +236,10 @@
 
     function attachFeedback(hasZip) {
       if (hasZip) {
-        setPanel("ok", "诊断包已上传", "可以关掉本页。");
+        setPanel("ok", "诊断包已上传", "");
       } else {
         setPanel("wait", "等待扫码", "摇一摇 → 上传诊断包 → 扫码。");
       }
-      if (lastLink) qrWrap.classList.remove("hidden");
     }
 
     function setChip(text) {
@@ -300,7 +386,8 @@
         lastLink = link;
         lastRecordId = recordId;
         setChip(recordLabel(fields, idByName));
-        await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
+        await QRCode.toCanvas(document.getElementById("qr"), link, { width: 288, margin: 1 });
+        qrWrap.classList.remove("hidden");
         attachFeedback(hasDiagnosticZip(fields[idByName["截图"]]));
         startWatch(table, recordId);
       } catch (error) {
