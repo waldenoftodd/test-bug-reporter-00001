@@ -190,10 +190,10 @@
         <span class="panel-icon" aria-hidden="true"></span>
         <div class="panel-copy">
           <p id="headline" class="headline">请选择记录</p>
-          <p id="sub" class="sub">在表格里点选一行，或打开记录卡片。</p>
+          <p id="sub" class="sub">在表格里点选一行。</p>
         </div>
       </div>
-      <p class="build">v20260824c</p>
+      <p class="build">v20260824d</p>
     </section>
   </main>
   <script type="module">
@@ -362,7 +362,7 @@
       try {
         const { tableId, recordIds } = await resolveRecordIds();
         if (!recordIds.length) {
-          resetView("未选中记录", "在表格里点选一行，或打开记录卡片。");
+          resetView("未选中记录", "在表格里点选一行。");
           return;
         }
         if (recordIds.length > 1) {
