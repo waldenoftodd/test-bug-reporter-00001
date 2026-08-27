@@ -249,8 +249,8 @@
       </div>
       <div class="row">
         <div>
-          <label for="submitter">提交人</label>
-          <select id="submitter">
+          <label for="assignee">跟进人</label>
+          <select id="assignee">
             <option selected>沈延涛</option>
             <option>魏博源</option>
           </select>
@@ -295,7 +295,7 @@
       <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
       </div>
-      <p class="build">v20260827c</p>
+      <p class="build">v20260827d</p>
     </section>
   </main>
   <script type="module">
@@ -465,6 +465,11 @@
         throw new Error("当前表没有「问题描述」字段。请在「Dino AI-版本问题跟踪」表打开本扩展。");
       }
 
+      let userId = "";
+      try {
+        userId = await bitable.bridge.getUserId();
+      } catch (_) {}
+
       const fields = {};
       const put = (names, value) => {
         const meta = Array.isArray(names) ? findMeta(metas, names) : metas[names];
@@ -476,6 +481,11 @@
         if (!meta || meta.type === 11 || meta.type === 1003) return;
         put(names, name);
       };
+      const putUser = (names, id) => {
+        const meta = findMeta(metas, names);
+        if (!meta || !id || meta.type !== 11) return;
+        fields[meta.id] = [{ id }];
+      };
 
       put("问题描述", values.desc);
       put("优先级", values.priority);
@@ -484,8 +494,10 @@
       put("版本", values.version);
       put("bug类型", values.bugType);
       put("备注", values.note);
-      putName(["提交人"], values.submitter);
-      putName(["反馈人"], values.submitter);
+      putName(["跟进人"], values.assignee);
+      putUser(["提交人"], userId);
+      putUser(["反馈人"], userId);
+      if (userId) put("提交人 Lark User ID", userId);
 
       const recordId = await table.addRecord({ fields });
       const bugId = await waitBugNumber(table, recordId, metas);
@@ -505,7 +517,7 @@
           priority: document.getElementById("priority").value,
           status: document.getElementById("status").value,
           module: moduleInput.value.trim(),
-          submitter: document.getElementById("submitter").value.trim(),
+          assignee: document.getElementById("assignee").value.trim(),
           version: document.getElementById("version").value,
           bugType: document.getElementById("bugType").value,
           note: document.getElementById("note").value.trim(),
