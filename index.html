@@ -249,6 +249,13 @@
       </div>
       <div class="row">
         <div>
+          <label for="submitter">提交人</label>
+          <select id="submitter">
+            <option selected>沈延涛</option>
+            <option>魏博源</option>
+          </select>
+        </div>
+        <div>
           <label for="version">版本</label>
           <select id="version">
             <option>v1.5.6</option>
@@ -271,18 +278,16 @@
             <option>管台一期</option>
           </select>
         </div>
-        <div>
-          <label for="bugType">bug类型</label>
-          <select id="bugType">
-            <option>人工验证</option>
-            <option>AI验证</option>
-            <option>闪退/Crash</option>
-            <option>Onboarding AB / 接口接入</option>
-            <option>B策略 / 主页引导</option>
-            <option>CRM外呼AI验证</option>
-          </select>
-        </div>
       </div>
+      <label for="bugType">bug类型</label>
+      <select id="bugType">
+        <option>人工验证</option>
+        <option>AI验证</option>
+        <option>闪退/Crash</option>
+        <option>Onboarding AB / 接口接入</option>
+        <option>B策略 / 主页引导</option>
+        <option>CRM外呼AI验证</option>
+      </select>
       <label for="note">备注（可选）</label>
       <textarea id="note" maxlength="2000" placeholder="账号、curl、额外上下文"></textarea>
       <button id="submit" type="button">创建并生成二维码</button>
@@ -290,7 +295,7 @@
       <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
       </div>
-      <p class="build">v20260827b</p>
+      <p class="build">v20260827c</p>
     </section>
   </main>
   <script type="module">
@@ -460,16 +465,16 @@
         throw new Error("当前表没有「问题描述」字段。请在「Dino AI-版本问题跟踪」表打开本扩展。");
       }
 
-      let userId = "";
-      try {
-        userId = await bitable.bridge.getUserId();
-      } catch (_) {}
-
       const fields = {};
       const put = (names, value) => {
         const meta = Array.isArray(names) ? findMeta(metas, names) : metas[names];
         const encoded = encodeField(meta, value);
         if (meta && encoded !== undefined) fields[meta.id] = encoded;
+      };
+      const putName = (names, name) => {
+        const meta = findMeta(metas, names);
+        if (!meta || meta.type === 11 || meta.type === 1003) return;
+        put(names, name);
       };
 
       put("问题描述", values.desc);
@@ -479,7 +484,8 @@
       put("版本", values.version);
       put("bug类型", values.bugType);
       put("备注", values.note);
-      if (userId) put("反馈人", userId);
+      putName(["提交人"], values.submitter);
+      putName(["反馈人"], values.submitter);
 
       const recordId = await table.addRecord({ fields });
       const bugId = await waitBugNumber(table, recordId, metas);
@@ -499,6 +505,7 @@
           priority: document.getElementById("priority").value,
           status: document.getElementById("status").value,
           module: moduleInput.value.trim(),
+          submitter: document.getElementById("submitter").value.trim(),
           version: document.getElementById("version").value,
           bugType: document.getElementById("bugType").value,
           note: document.getElementById("note").value.trim(),
