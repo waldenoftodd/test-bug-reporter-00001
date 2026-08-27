@@ -295,7 +295,7 @@
       <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
       </div>
-      <p class="build">v20260827g</p>
+      <p class="build">v20260827h</p>
     </section>
   </main>
   <script type="module">
@@ -472,41 +472,108 @@
       return String(user.id || user.userId || user.open_id || "").trim();
     }
 
-    async function loadUserIdMap(table, meta) {
-      const map = new Map();
-      if (!meta) return map;
+    function isPersonMeta(meta) {
+      const t = meta?.type;
+      return t === 11 || t === "User" || t === 1003 || t === "CreatedUser" || t === 1004 || t === "ModifiedUser";
+    }
+
+    function collectUsers(map, value) {
+      const users = Array.isArray(value) ? value : value ? [value] : [];
+      for (const user of users) {
+        const name = userNameOf(user);
+        const id = userIdOf(user);
+        if (name && id) map.set(name, id);
+      }
+    }
+
+    function hasAssignees(map) {
+      return ASSIGNEE_NAMES.every((name) => map.has(name));
+    }
+
+    async function collectFromField(table, meta, map) {
+      if (!meta) return;
       try {
         const field = typeof table.getField === "function"
           ? await table.getField(meta.id)
           : await table.getFieldById(meta.id);
-        const readPage = async (pageToken) => {
-          if (typeof field.getFieldValueListByPage === "function") {
-            return field.getFieldValueListByPage({ pageToken: pageToken || 0, pageSize: 200 });
+        if (typeof field.getFieldValueListByPage === "function") {
+          let token = 0;
+          for (let i = 0; i < 6; i++) {
+            const page = await field.getFieldValueListByPage({ pageToken: token || 0, pageSize: 200 });
+            for (const row of page.fieldValues || []) collectUsers(map, row.value);
+            if (hasAssignees(map) || !page.hasMore) break;
+            token = page.pageToken;
           }
-          const page = await table.getRecordsByPage({ pageToken: pageToken || 0, pageSize: 200 });
-          return {
-            fieldValues: (page.records || []).map((rec) => ({ value: rec.fields?.[meta.id] })),
-            hasMore: page.hasMore,
-            pageToken: page.pageToken,
-          };
-        };
-        let token = 0;
-        for (let i = 0; i < 8; i++) {
-          const page = await readPage(token);
-          const rows = page.fieldValues || [];
-          for (const row of rows) {
-            const users = Array.isArray(row.value) ? row.value : row.value ? [row.value] : [];
-            for (const user of users) {
-              const name = userNameOf(user);
-              const id = userIdOf(user);
-              if (name && id && !map.has(name)) map.set(name, id);
-            }
+        }
+        if (hasAssignees(map)) return;
+        const ids = typeof table.getRecordIdList === "function" ? await table.getRecordIdList() : [];
+        const chunk = (ids || []).slice(0, 80);
+        if (typeof table.getRecordsByIds === "function" && chunk.length) {
+          const recs = await table.getRecordsByIds(chunk);
+          const list = Array.isArray(recs) ? recs : recs?.records || [];
+          for (const rec of list) {
+            const fields = rec?.fields || {};
+            collectUsers(map, fields[meta.id] || fields[meta.name]);
           }
-          if (ASSIGNEE_NAMES.every((name) => map.has(name))) break;
-          if (!page.hasMore) break;
-          token = page.pageToken;
+        } else if (typeof field.getValue === "function") {
+          for (const recordId of chunk) {
+            collectUsers(map, await field.getValue(recordId));
+            if (hasAssignees(map)) break;
+          }
         }
       } catch (_) {}
+    }
+
+    async function collectFromCollaborators(map) {
+      const candidates = [
+        () => bitable.base.getCollaboratorList?.(),
+        () => bitable.bridge.getCollaboratorList?.(),
+        () => bitable.base.getMemberList?.(),
+        () => bitable.bridge.getMemberList?.(),
+        () => bitable.bridge.getBaseMetaInfo?.(),
+      ];
+      for (const fn of candidates) {
+        try {
+          const result = await fn();
+          if (!result) continue;
+          if (Array.isArray(result)) collectUsers(map, result);
+          else {
+            collectUsers(map, result.collaborators || result.members || result.users || []);
+            const me = result.user || result.currentUser || result.owner;
+            if (me) collectUsers(map, me);
+          }
+        } catch (_) {}
+      }
+    }
+
+    async function loadUserIdMap(table) {
+      const map = new Map(assigneeIdByName);
+      if (hasAssignees(map)) return map;
+      try {
+        const metas = await table.getFieldMetaList();
+        const personMetas = metas.filter(isPersonMeta);
+        const preferred = findMeta(metaByName(metas), ["跟进人", "反馈人", "提交人"]);
+        const ordered = preferred
+          ? [preferred].concat(personMetas.filter((item) => item.id !== preferred.id))
+          : personMetas;
+        for (const meta of ordered) {
+          await collectFromField(table, meta, map);
+          if (hasAssignees(map)) return map;
+        }
+      } catch (_) {}
+      try {
+        const tables = await bitable.base.getTableMetaList();
+        for (const item of tables || []) {
+          if (item.id === table.id) continue;
+          const other = await bitable.base.getTableById(item.id);
+          const metas = await other.getFieldMetaList();
+          for (const meta of metas.filter(isPersonMeta)) {
+            await collectFromField(other, meta, map);
+            if (hasAssignees(map)) return map;
+          }
+        }
+      } catch (_) {}
+      await collectFromCollaborators(map);
       return map;
     }
 
@@ -540,7 +607,7 @@
             name = value;
             uid = assigneeIdByName.get(value) || "";
             if (!uid) {
-              const loaded = await loadUserIdMap(table, meta);
+              const loaded = await loadUserIdMap(table);
               loaded.forEach((id, key) => assigneeIdByName.set(key, id));
               uid = assigneeIdByName.get(value) || "";
             }
@@ -576,7 +643,7 @@
         fillSelect("bugType", fieldOptions(findMeta(metas, ["bug类型"])), "人工验证");
         const assigneeMeta = findMeta(metas, ["跟进人"]);
         if (assigneeMeta) {
-          const map = await loadUserIdMap(table, assigneeMeta);
+          const map = await loadUserIdMap(table);
           map.forEach((id, name) => assigneeIdByName.set(name, id));
           const select = document.getElementById("assignee");
           const current = select.value;
