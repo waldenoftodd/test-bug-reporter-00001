@@ -16,6 +16,7 @@
       --brand: #16a34a;
       --brand-soft: #e8f8ee;
       --wait-ink: #9a6700;
+      --fail-ink: #b42318;
       --shadow: 0 16px 48px rgba(21, 36, 28, .08);
     }
     * { box-sizing: border-box; }
@@ -31,7 +32,7 @@
       color: var(--ink);
     }
     main {
-      width: min(560px, 100%);
+      width: min(520px, 100%);
       min-height: 100%;
       margin: 0 auto;
       padding: 20px 16px 28px;
@@ -56,19 +57,11 @@
       font-size: 22px;
       font-weight: 600;
       line-height: 1.4;
-      margin: 0 0 6px;
+      margin: 0;
       letter-spacing: .06em;
     }
-    .hint {
-      margin: 0;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 400;
-      line-height: 1.7;
-      letter-spacing: .04em;
-    }
     .card {
-      padding: 24px 22px 22px;
+      padding: 22px 20px 20px;
       background: var(--card);
       border: 1px solid rgba(22, 163, 74, .08);
       border-radius: 24px;
@@ -81,6 +74,7 @@
       color: #3d4a44;
       margin: 14px 0 6px;
     }
+    .card > label:first-of-type { margin-top: 0; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     input, select, textarea, button { width: 100%; font: inherit; }
     input, select, textarea {
@@ -95,18 +89,74 @@
       border-color: var(--brand);
       background: #fff;
     }
-    textarea { min-height: 120px; resize: vertical; line-height: 1.55; }
-    .check {
+    textarea { min-height: 108px; resize: vertical; line-height: 1.55; }
+    .combo { position: relative; }
+    .combo-field {
       display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 16px 0 4px;
-      font-size: 13px;
-      color: var(--muted);
+      align-items: stretch;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f7fbf8;
     }
-    .check input { width: auto; }
+    .combo-field:focus-within {
+      outline: 2px solid rgba(22, 163, 74, .28);
+      border-color: var(--brand);
+      background: #fff;
+    }
+    .combo-field input {
+      border: 0;
+      border-radius: 12px 0 0 12px;
+      background: transparent;
+      outline: none;
+    }
+    .combo-toggle {
+      flex: 0 0 40px;
+      width: 40px;
+      margin: 0;
+      min-height: 0;
+      border: 0;
+      border-radius: 0 10px 10px 0;
+      background: transparent;
+      box-shadow: none;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .combo-toggle:hover { color: var(--brand); }
+    .combo-list {
+      position: absolute;
+      z-index: 8;
+      left: 0;
+      right: 0;
+      top: calc(100% + 6px);
+      max-height: 220px;
+      overflow: auto;
+      margin: 0;
+      padding: 6px;
+      list-style: none;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    .combo-list.hidden { display: none; }
+    .combo-item {
+      display: block;
+      width: 100%;
+      margin: 0;
+      min-height: 36px;
+      padding: 8px 10px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      box-shadow: none;
+      color: var(--ink);
+      font-weight: 500;
+      text-align: left;
+      cursor: pointer;
+    }
+    .combo-item:hover, .combo-item.active { background: var(--brand-soft); color: #15803d; }
     button {
-      margin-top: 12px;
+      margin-top: 18px;
       min-height: 46px;
       border: 0;
       border-radius: 14px;
@@ -116,33 +166,27 @@
       cursor: pointer;
       box-shadow: 0 8px 18px rgba(22, 163, 74, .22);
     }
-    button.secondary {
-      background: #3d4a44;
-      box-shadow: none;
-    }
     button:disabled { opacity: .55; cursor: not-allowed; }
     .status {
       margin: 14px 0 0;
       font-size: 13px;
       color: var(--wait-ink);
-      white-space: pre-wrap;
       line-height: 1.6;
+      text-align: center;
     }
+    .status.ok { color: #15803d; }
+    .status.fail { color: var(--fail-ink); }
     .qr {
+      display: none;
       margin-top: 16px;
-      padding: 16px;
+      padding: 18px;
       border-radius: 22px;
       background: #f6fbf8;
       border: 1px solid var(--line);
       text-align: center;
     }
-    .qr canvas { display: block; margin: 0 auto; border-radius: 10px; }
-    .payload {
-      font-size: 12px;
-      word-break: break-all;
-      color: var(--muted);
-      margin: 10px 0 0;
-    }
+    .qr.show { display: grid; place-items: center; }
+    .qr canvas { display: block; width: min(240px, 100%); height: auto; border-radius: 10px; }
     .build { margin: 14px 0 0; font-size: 11px; color: #9aa59e; letter-spacing: .08em; text-align: center; }
     @media (max-width: 420px) {
       .row { grid-template-columns: 1fr; }
@@ -158,10 +202,7 @@
           <path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
       </div>
-      <div>
-        <h1>Dino Bug 提单</h1>
-        <p class="hint">在「版本问题跟踪」表打开。建单后用 debug App 扫码上传诊断包。</p>
-      </div>
+      <h1>Dino Bug 提单</h1>
     </header>
     <section class="card">
       <label for="desc">问题描述</label>
@@ -199,18 +240,13 @@
         </div>
       </div>
       <label for="module">模块</label>
-      <select id="module">
-        <option>class/课堂</option>
-        <option>log/登录&amp;注册</option>
-        <option>explore/探索</option>
-        <option>chat/聊天</option>
-        <option>me/个人中心</option>
-        <option>play/游戏</option>
-        <option>course/一堂好课</option>
-        <option>member/会员</option>
-        <option>体验课完成后</option>
-        <option>onboarding/转化AB</option>
-      </select>
+      <div class="combo" id="moduleCombo">
+        <div class="combo-field">
+          <input id="module" type="text" value="class/课堂" autocomplete="off" placeholder="选择或输入模块" />
+          <button class="combo-toggle" id="moduleToggle" type="button" aria-label="打开模块列表">▾</button>
+        </div>
+        <ul class="combo-list hidden" id="moduleList"></ul>
+      </div>
       <div class="row">
         <div>
           <label for="version">版本</label>
@@ -249,33 +285,41 @@
       </div>
       <label for="note">备注（可选）</label>
       <textarea id="note" maxlength="2000" placeholder="账号、curl、额外上下文"></textarea>
-      <label class="check"><input id="preview" type="checkbox" /> 仅生成预览二维码（不写 Base）</label>
       <button id="submit" type="button">创建并生成二维码</button>
-      <button id="copy" class="secondary" type="button">复制扫码链接</button>
       <p id="statusMsg" class="status"></p>
-      <div class="qr">
+      <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
-        <p id="payload" class="payload"></p>
       </div>
-      <p class="build">v20260827a</p>
+      <p class="build">v20260827b</p>
     </section>
   </main>
   <script type="module">
     import { bitable } from "./lark-base-sdk.js";
 
+    const DEFAULT_MODULES = [
+      "class/课堂",
+      "log/登录&注册",
+      "explore/探索",
+      "chat/聊天",
+      "me/个人中心",
+      "play/游戏",
+      "course/一堂好课",
+      "member/会员",
+      "体验课完成后",
+      "onboarding/转化AB",
+    ];
+
     const statusEl = document.getElementById("statusMsg");
-    const payloadEl = document.getElementById("payload");
-    let lastLink = "";
+    const qrWrap = document.getElementById("qrWrap");
+    const moduleInput = document.getElementById("module");
+    const moduleList = document.getElementById("moduleList");
+    const moduleToggle = document.getElementById("moduleToggle");
+    let moduleOptions = DEFAULT_MODULES.slice();
 
-    function uuid() {
-      if (crypto.randomUUID) return crypto.randomUUID();
-      return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        return (c === "x" ? r : (r & 0x3 | 0x8)).toString(16);
-      });
+    function setStatus(text, kind) {
+      statusEl.textContent = text;
+      statusEl.className = "status" + (kind ? " " + kind : "");
     }
-
-    function setStatus(text) { statusEl.textContent = text; }
 
     function qrLink(bugId, recordId) {
       const params = new URLSearchParams();
@@ -286,15 +330,76 @@
     }
 
     async function renderQr(link) {
-      lastLink = link;
-      payloadEl.textContent = link;
       await QRCode.toCanvas(document.getElementById("qr"), link, { width: 240, margin: 1 });
+      qrWrap.classList.add("show");
     }
+
+    function optionName(item) {
+      if (item == null) return "";
+      if (typeof item === "string") return item;
+      return String(item.name || item.text || "").trim();
+    }
+
+    function renderModuleList(filter) {
+      const q = (filter || "").trim().toLowerCase();
+      const items = moduleOptions.filter((name) => !q || name.toLowerCase().includes(q));
+      moduleList.innerHTML = "";
+      items.forEach((name) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "combo-item" + (name === moduleInput.value ? " active" : "");
+        btn.textContent = name;
+        btn.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+          moduleInput.value = name;
+          closeModuleList();
+        });
+        moduleList.appendChild(btn);
+      });
+    }
+
+    function openModuleList() {
+      renderModuleList(moduleInput.value);
+      moduleList.classList.remove("hidden");
+    }
+
+    function closeModuleList() {
+      moduleList.classList.add("hidden");
+    }
+
+    moduleToggle.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (moduleList.classList.contains("hidden")) openModuleList();
+      else closeModuleList();
+    });
+    moduleInput.addEventListener("focus", openModuleList);
+    moduleInput.addEventListener("input", () => openModuleList());
+    document.addEventListener("click", (event) => {
+      if (!event.target.closest("#moduleCombo")) closeModuleList();
+    });
 
     function metaByName(metas) {
       const map = {};
       for (const field of metas) map[field.name] = field;
       return map;
+    }
+
+    function findMeta(metas, names) {
+      for (const name of names) {
+        if (metas[name]) return metas[name];
+      }
+      const keys = Object.keys(metas);
+      for (const name of names) {
+        const hit = keys.find((key) => key.trim() === name);
+        if (hit) return metas[hit];
+      }
+      return undefined;
+    }
+
+    function fieldOptions(meta) {
+      const raw = meta?.property?.options || meta?.property?.choices || [];
+      if (!Array.isArray(raw)) return [];
+      return raw.map(optionName).filter(Boolean);
     }
 
     async function waitBugNumber(table, recordId, metas) {
@@ -313,18 +418,45 @@
     function encodeField(meta, value) {
       if (!meta || value == null || value === "") return undefined;
       const type = meta.type;
-      if (type === 4) return Array.isArray(value) ? value : [value];
+      const text = Array.isArray(value) ? value.map(String).join(",") : String(value).trim();
+      if (!text) return undefined;
+      const names = text.split(/[,，]/).map((part) => part.trim()).filter(Boolean);
+      const options = fieldOptions(meta);
+      const mapped = names.map((name) => {
+        const hit = options.find((opt) => opt === name)
+          || options.find((opt) => opt.toLowerCase() === name.toLowerCase());
+        return hit || name;
+      });
+      if (type === 4) return mapped;
+      if (type === 3) return mapped[0];
       if (type === 11) {
         if (Array.isArray(value)) return value;
-        return [{ id: value }];
+        return [{ id: text }];
       }
-      return value;
+      if (type === 1) return text;
+      return type === 4 ? mapped : (mapped.length > 1 ? mapped.join(",") : mapped[0] || text);
+    }
+
+    async function hydrateModuleOptions() {
+      try {
+        const table = await bitable.base.getActiveTable();
+        const metas = metaByName(await table.getFieldMetaList());
+        const meta = findMeta(metas, ["模块", "所属模块"]);
+        const fromTable = fieldOptions(meta);
+        if (fromTable.length) {
+          const merged = [];
+          fromTable.concat(DEFAULT_MODULES).forEach((name) => {
+            if (name && !merged.includes(name)) merged.push(name);
+          });
+          moduleOptions = merged;
+        }
+      } catch (_) {}
     }
 
     async function createInBase(values) {
       const table = await bitable.base.getActiveTable();
       const metas = metaByName(await table.getFieldMetaList());
-      if (!metas["问题描述"]) {
+      if (!findMeta(metas, ["问题描述"])) {
         throw new Error("当前表没有「问题描述」字段。请在「Dino AI-版本问题跟踪」表打开本扩展。");
       }
 
@@ -334,14 +466,15 @@
       } catch (_) {}
 
       const fields = {};
-      const put = (name, value) => {
-        const encoded = encodeField(metas[name], value);
-        if (encoded !== undefined) fields[metas[name].id] = encoded;
+      const put = (names, value) => {
+        const meta = Array.isArray(names) ? findMeta(metas, names) : metas[names];
+        const encoded = encodeField(meta, value);
+        if (meta && encoded !== undefined) fields[meta.id] = encoded;
       };
 
       put("问题描述", values.desc);
       put("优先级", values.priority);
-      put("模块", values.module);
+      put(["模块", "所属模块"], values.module);
       put("进展状态", values.status);
       put("版本", values.version);
       put("bug类型", values.bugType);
@@ -355,43 +488,31 @@
 
     document.getElementById("submit").addEventListener("click", async () => {
       const desc = document.getElementById("desc").value.trim();
-      const preview = document.getElementById("preview").checked;
-      if (!desc) { setStatus("请填写问题描述"); return; }
+      if (!desc) { setStatus("请填写问题描述", "fail"); return; }
       const button = document.getElementById("submit");
       button.disabled = true;
+      qrWrap.classList.remove("show");
       try {
-        if (preview) {
-          const recordId = "recPreview" + uuid().slice(0, 8);
-          const link = qrLink("", recordId);
-          await renderQr(link);
-          setStatus("预览二维码已生成。App 会扫到假 record_id，只有真 Base 记录才能上传成功。");
-          return;
-        }
-        setStatus("正在写入当前问题跟踪表…");
+        setStatus("正在写入…");
         const created = await createInBase({
           desc,
           priority: document.getElementById("priority").value,
           status: document.getElementById("status").value,
-          module: document.getElementById("module").value,
+          module: moduleInput.value.trim(),
           version: document.getElementById("version").value,
           bugType: document.getElementById("bugType").value,
           note: document.getElementById("note").value.trim(),
         });
-        const link = qrLink(created.bugId, created.recordId);
-        await renderQr(link);
-        setStatus(`已建单\nrecord_id=${created.recordId}\n请用 debug App 摇一摇 → 提 BUG → 扫码。诊断包会写入「截图」。`);
+        await renderQr(qrLink(created.bugId, created.recordId));
+        setStatus("已建单，请用 debug App 扫码", "ok");
       } catch (error) {
-        setStatus(error.message || String(error));
+        setStatus(error.message || String(error), "fail");
       } finally {
         button.disabled = false;
       }
     });
 
-    document.getElementById("copy").addEventListener("click", async () => {
-      if (!lastLink) { setStatus("还没有可复制的链接"); return; }
-      await navigator.clipboard.writeText(lastLink);
-      setStatus("已复制扫码链接");
-    });
+    hydrateModuleOptions();
   </script>
 </body>
 </html>
