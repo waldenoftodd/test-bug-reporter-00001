@@ -100,6 +100,9 @@
       color: #3d4a44;
       font-size: 13px;
       font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .chip.hidden { display: none; }
     .qr {
@@ -221,7 +224,7 @@
           <p id="sub" class="sub">在表格里点选一行</p>
         </div>
       </div>
-      <p class="build">v20260824e</p>
+      <p class="build">v20260827a</p>
     </section>
   </main>
   <script type="module">
@@ -297,9 +300,12 @@
     }
 
     function recordLabel(fields, idByName) {
-      return cellText(fields[idByName["Bug 编号"]])
+      const raw = cellText(fields[idByName["问题描述"]])
         || cellText(fields[idByName["标题"]])
-        || "";
+        || cellText(fields[idByName["Bug 编号"]]);
+      if (!raw) return "";
+      const one = raw.replace(/\s+/g, " ").trim();
+      return one.length > 36 ? one.slice(0, 36) + "…" : one;
     }
 
     function qrLink(bugId, recordId) {
