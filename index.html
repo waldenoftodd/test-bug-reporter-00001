@@ -295,7 +295,7 @@
       <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
       </div>
-      <p class="build">v20260827e</p>
+      <p class="build">v20260827f</p>
     </section>
   </main>
   <script type="module">
@@ -420,6 +420,18 @@
       return "";
     }
 
+    function fieldType(meta) {
+      const t = meta?.type;
+      if (t === 11 || t === "User") return 11;
+      if (t === 3 || t === "SingleSelect") return 3;
+      if (t === 4 || t === "MultiSelect") return 4;
+      if (t === 1 || t === "Text") return 1;
+      if (t === 5 || t === "DateTime") return 5;
+      if (typeof t === "number") return t;
+      const n = Number(t);
+      return Number.isFinite(n) ? n : 0;
+    }
+
     function matchOption(meta, value) {
       const text = String(value || "").trim();
       if (!text) return "";
@@ -469,9 +481,22 @@
       return "";
     }
 
+    async function currentUserId() {
+      try {
+        if (typeof bitable.bridge.getBaseUserId === "function") {
+          const baseId = await bitable.bridge.getBaseUserId();
+          if (baseId) return baseId;
+        }
+      } catch (_) {}
+      try {
+        return await bitable.bridge.getUserId();
+      } catch (_) {}
+      return "";
+    }
+
     async function makeCell(table, meta, value) {
       if (!meta || value == null || value === "") return null;
-      const type = Number(meta.type);
+      const type = fieldType(meta);
       if ([0, 19, 20, 1001, 1002, 1003, 1004].includes(type)) return null;
       const field = typeof table.getField === "function"
         ? await table.getField(meta.id)
@@ -485,14 +510,21 @@
         payload = parts.map((part) => matchOption(meta, part));
       }
       if (type === 11) {
+        let uid = "";
+        let name = "";
         if (typeof value === "string") {
           if (/[\u4e00-\u9fff]/.test(value)) {
-            const uid = await resolveUserId(table, meta.id, value);
-            payload = uid ? [{ id: uid, name: value }] : [{ name: value }];
+            name = value;
+            uid = await resolveUserId(table, meta.id, value);
           } else {
-            payload = [{ id: value }];
+            uid = value;
           }
+        } else if (value && typeof value === "object") {
+          uid = value.id || "";
+          name = value.name || "";
         }
+        if (!uid) return null;
+        payload = name ? [{ id: uid, name }] : [{ id: uid }];
       }
       return field.createCell(payload);
     }
@@ -526,12 +558,10 @@
         throw new Error("当前表没有「问题描述」字段。请在「Dino AI-版本问题跟踪」表打开本扩展。");
       }
 
-      let userId = "";
-      try {
-        userId = await bitable.bridge.getUserId();
-      } catch (_) {}
+      let userId = await currentUserId();
 
       const cells = [];
+      const userCells = [];
       const failed = [];
       async function add(names, value) {
         const meta = findMeta(metas, names);
@@ -543,8 +573,12 @@
         }
         try {
           const cell = await makeCell(table, meta, value);
-          if (cell) cells.push(cell);
-          else failed.push(label);
+          if (!cell) {
+            failed.push(label);
+            return;
+          }
+          if (fieldType(meta) === 11) userCells.push(cell);
+          else cells.push(cell);
         } catch (_) {
           failed.push(label);
         }
@@ -560,14 +594,22 @@
       await add(["跟进人"], values.assignee);
       if (userId) {
         const submitter = findMeta(metas, ["提交人"]);
-        if (submitter && Number(submitter.type) === 11) await add(["提交人"], userId);
+        if (submitter && fieldType(submitter) === 11) await add(["提交人"], userId);
         const reporter = findMeta(metas, ["反馈人"]);
-        if (reporter && Number(reporter.type) === 11) await add(["反馈人"], userId);
+        if (reporter && fieldType(reporter) === 11) await add(["反馈人"], userId);
         await add(["提交人 Lark User ID"], userId);
       }
 
-      if (!cells.length) throw new Error("没有可写入的字段");
-      const created = await table.addRecord(cells);
+      if (!cells.length && !userCells.length) throw new Error("没有可写入的字段");
+      let created;
+      try {
+        created = await table.addRecord(cells.concat(userCells));
+      } catch (error) {
+        const msg = error && error.message ? error.message : String(error);
+        if (!userCells.length || !/user id/i.test(msg)) throw error;
+        created = await table.addRecord(cells);
+        failed.push("跟进人", "提交人", "反馈人");
+      }
       const recordId = typeof created === "string" ? created : (created?.id || created?.recordId || "");
       const bugId = await waitBugNumber(table, recordId, metas);
       return { recordId, bugId, failed };
