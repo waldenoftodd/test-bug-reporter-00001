@@ -295,7 +295,7 @@
       <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
       </div>
-      <p class="build">v20260827f</p>
+      <p class="build">v20260827g</p>
     </section>
   </main>
   <script type="module">
@@ -456,38 +456,61 @@
       el.value = pick;
     }
 
-    const userIdCache = new Map();
-    async function resolveUserId(table, fieldId, name) {
-      const key = fieldId + ":" + name;
-      if (userIdCache.has(key)) return userIdCache.get(key);
+    const ASSIGNEE_NAMES = ["沈延涛", "魏博源"];
+    const assigneeIdByName = new Map();
+
+    function userNameOf(user) {
+      if (user == null) return "";
+      if (typeof user === "string") return user;
+      const raw = user.name || user.enName || user.en_name || user.text || "";
+      if (typeof raw === "string") return raw;
+      return raw.text || raw.name || "";
+    }
+
+    function userIdOf(user) {
+      if (user == null || typeof user === "string") return "";
+      return String(user.id || user.userId || user.open_id || "").trim();
+    }
+
+    async function loadUserIdMap(table, meta) {
+      const map = new Map();
+      if (!meta) return map;
       try {
-        const page = typeof table.getRecordsByPage === "function"
-          ? await table.getRecordsByPage({ pageSize: 500 })
-          : await table.getRecords({ pageSize: 500 });
-        const records = page?.records || page || [];
-        for (const rec of records) {
-          const val = rec?.fields?.[fieldId];
-          const users = Array.isArray(val) ? val : val ? [val] : [];
-          for (const user of users) {
-            const label = user?.name || user?.enName || user?.text || "";
-            if (label === name && user.id) {
-              userIdCache.set(key, user.id);
-              return user.id;
+        const field = typeof table.getField === "function"
+          ? await table.getField(meta.id)
+          : await table.getFieldById(meta.id);
+        const readPage = async (pageToken) => {
+          if (typeof field.getFieldValueListByPage === "function") {
+            return field.getFieldValueListByPage({ pageToken: pageToken || 0, pageSize: 200 });
+          }
+          const page = await table.getRecordsByPage({ pageToken: pageToken || 0, pageSize: 200 });
+          return {
+            fieldValues: (page.records || []).map((rec) => ({ value: rec.fields?.[meta.id] })),
+            hasMore: page.hasMore,
+            pageToken: page.pageToken,
+          };
+        };
+        let token = 0;
+        for (let i = 0; i < 8; i++) {
+          const page = await readPage(token);
+          const rows = page.fieldValues || [];
+          for (const row of rows) {
+            const users = Array.isArray(row.value) ? row.value : row.value ? [row.value] : [];
+            for (const user of users) {
+              const name = userNameOf(user);
+              const id = userIdOf(user);
+              if (name && id && !map.has(name)) map.set(name, id);
             }
           }
+          if (ASSIGNEE_NAMES.every((name) => map.has(name))) break;
+          if (!page.hasMore) break;
+          token = page.pageToken;
         }
       } catch (_) {}
-      userIdCache.set(key, "");
-      return "";
+      return map;
     }
 
     async function currentUserId() {
-      try {
-        if (typeof bitable.bridge.getBaseUserId === "function") {
-          const baseId = await bitable.bridge.getBaseUserId();
-          if (baseId) return baseId;
-        }
-      } catch (_) {}
       try {
         return await bitable.bridge.getUserId();
       } catch (_) {}
@@ -515,13 +538,18 @@
         if (typeof value === "string") {
           if (/[\u4e00-\u9fff]/.test(value)) {
             name = value;
-            uid = await resolveUserId(table, meta.id, value);
+            uid = assigneeIdByName.get(value) || "";
+            if (!uid) {
+              const loaded = await loadUserIdMap(table, meta);
+              loaded.forEach((id, key) => assigneeIdByName.set(key, id));
+              uid = assigneeIdByName.get(value) || "";
+            }
           } else {
             uid = value;
           }
         } else if (value && typeof value === "object") {
-          uid = value.id || "";
-          name = value.name || "";
+          uid = userIdOf(value);
+          name = userNameOf(value);
         }
         if (!uid) return null;
         payload = name ? [{ id: uid, name }] : [{ id: uid }];
@@ -546,8 +574,22 @@
         fillSelect("status", fieldOptions(findMeta(metas, ["进展状态"])), "待修复");
         fillSelect("version", fieldOptions(findMeta(metas, ["版本"])), "v1.5.6");
         fillSelect("bugType", fieldOptions(findMeta(metas, ["bug类型"])), "人工验证");
-        const assigneeOpts = fieldOptions(findMeta(metas, ["跟进人"]));
-        if (assigneeOpts.length) fillSelect("assignee", assigneeOpts, "沈延涛");
+        const assigneeMeta = findMeta(metas, ["跟进人"]);
+        if (assigneeMeta) {
+          const map = await loadUserIdMap(table, assigneeMeta);
+          map.forEach((id, name) => assigneeIdByName.set(name, id));
+          const select = document.getElementById("assignee");
+          const current = select.value;
+          select.innerHTML = "";
+          ASSIGNEE_NAMES.forEach((name) => {
+            const opt = document.createElement("option");
+            opt.textContent = name;
+            opt.value = assigneeIdByName.get(name) || name;
+            select.appendChild(opt);
+          });
+          const preferred = assigneeIdByName.get("沈延涛") || "沈延涛";
+          select.value = assigneeIdByName.get(current) || preferred;
+        }
       } catch (_) {}
     }
 
