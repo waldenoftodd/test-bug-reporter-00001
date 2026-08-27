@@ -295,7 +295,7 @@
       <div id="qrWrap" class="qr">
         <canvas id="qr"></canvas>
       </div>
-      <p class="build">v20260827d</p>
+      <p class="build">v20260827e</p>
     </section>
   </main>
   <script type="module">
@@ -420,34 +420,89 @@
       return "";
     }
 
-    function encodeField(meta, value) {
-      if (!meta || value == null || value === "") return undefined;
-      const type = meta.type;
-      const text = Array.isArray(value) ? value.map(String).join(",") : String(value).trim();
-      if (!text) return undefined;
-      const names = text.split(/[,，]/).map((part) => part.trim()).filter(Boolean);
+    function matchOption(meta, value) {
+      const text = String(value || "").trim();
+      if (!text) return "";
       const options = fieldOptions(meta);
-      const mapped = names.map((name) => {
-        const hit = options.find((opt) => opt === name)
-          || options.find((opt) => opt.toLowerCase() === name.toLowerCase());
-        return hit || name;
-      });
-      if (type === 4) return mapped;
-      if (type === 3) return mapped[0];
-      if (type === 11) {
-        if (Array.isArray(value)) return value;
-        return [{ id: text }];
-      }
-      if (type === 1) return text;
-      return type === 4 ? mapped : (mapped.length > 1 ? mapped.join(",") : mapped[0] || text);
+      return options.find((opt) => opt === text)
+        || options.find((opt) => opt.toLowerCase() === text.toLowerCase())
+        || text;
     }
 
-    async function hydrateModuleOptions() {
+    function fillSelect(id, options, preferred) {
+      const el = document.getElementById(id);
+      if (!el || !options.length) return;
+      const keep = options.includes(el.value) ? el.value : "";
+      const pick = (preferred && options.includes(preferred) ? preferred : "") || keep || options[0];
+      el.innerHTML = "";
+      options.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        el.appendChild(opt);
+      });
+      el.value = pick;
+    }
+
+    const userIdCache = new Map();
+    async function resolveUserId(table, fieldId, name) {
+      const key = fieldId + ":" + name;
+      if (userIdCache.has(key)) return userIdCache.get(key);
+      try {
+        const page = typeof table.getRecordsByPage === "function"
+          ? await table.getRecordsByPage({ pageSize: 500 })
+          : await table.getRecords({ pageSize: 500 });
+        const records = page?.records || page || [];
+        for (const rec of records) {
+          const val = rec?.fields?.[fieldId];
+          const users = Array.isArray(val) ? val : val ? [val] : [];
+          for (const user of users) {
+            const label = user?.name || user?.enName || user?.text || "";
+            if (label === name && user.id) {
+              userIdCache.set(key, user.id);
+              return user.id;
+            }
+          }
+        }
+      } catch (_) {}
+      userIdCache.set(key, "");
+      return "";
+    }
+
+    async function makeCell(table, meta, value) {
+      if (!meta || value == null || value === "") return null;
+      const type = Number(meta.type);
+      if ([0, 19, 20, 1001, 1002, 1003, 1004].includes(type)) return null;
+      const field = typeof table.getField === "function"
+        ? await table.getField(meta.id)
+        : await table.getFieldById(meta.id);
+      let payload = value;
+      if (type === 3) payload = matchOption(meta, value);
+      if (type === 4) {
+        const parts = Array.isArray(value)
+          ? value
+          : String(value).split(/[,，]/).map((part) => part.trim()).filter(Boolean);
+        payload = parts.map((part) => matchOption(meta, part));
+      }
+      if (type === 11) {
+        if (typeof value === "string") {
+          if (/[\u4e00-\u9fff]/.test(value)) {
+            const uid = await resolveUserId(table, meta.id, value);
+            payload = uid ? [{ id: uid, name: value }] : [{ name: value }];
+          } else {
+            payload = [{ id: value }];
+          }
+        }
+      }
+      return field.createCell(payload);
+    }
+
+    async function hydrateFields() {
       try {
         const table = await bitable.base.getActiveTable();
         const metas = metaByName(await table.getFieldMetaList());
-        const meta = findMeta(metas, ["模块", "所属模块"]);
-        const fromTable = fieldOptions(meta);
+        const moduleMeta = findMeta(metas, ["模块", "所属模块"]);
+        const fromTable = fieldOptions(moduleMeta);
         if (fromTable.length) {
           const merged = [];
           fromTable.concat(DEFAULT_MODULES).forEach((name) => {
@@ -455,6 +510,12 @@
           });
           moduleOptions = merged;
         }
+        fillSelect("priority", fieldOptions(findMeta(metas, ["优先级"])), "P1");
+        fillSelect("status", fieldOptions(findMeta(metas, ["进展状态"])), "待修复");
+        fillSelect("version", fieldOptions(findMeta(metas, ["版本"])), "v1.5.6");
+        fillSelect("bugType", fieldOptions(findMeta(metas, ["bug类型"])), "人工验证");
+        const assigneeOpts = fieldOptions(findMeta(metas, ["跟进人"]));
+        if (assigneeOpts.length) fillSelect("assignee", assigneeOpts, "沈延涛");
       } catch (_) {}
     }
 
@@ -470,38 +531,46 @@
         userId = await bitable.bridge.getUserId();
       } catch (_) {}
 
-      const fields = {};
-      const put = (names, value) => {
-        const meta = Array.isArray(names) ? findMeta(metas, names) : metas[names];
-        const encoded = encodeField(meta, value);
-        if (meta && encoded !== undefined) fields[meta.id] = encoded;
-      };
-      const putName = (names, name) => {
+      const cells = [];
+      const failed = [];
+      async function add(names, value) {
         const meta = findMeta(metas, names);
-        if (!meta || meta.type === 11 || meta.type === 1003) return;
-        put(names, name);
-      };
-      const putUser = (names, id) => {
-        const meta = findMeta(metas, names);
-        if (!meta || !id || meta.type !== 11) return;
-        fields[meta.id] = [{ id }];
-      };
+        const label = names[0];
+        if (value == null || value === "") return;
+        if (!meta) {
+          failed.push(label);
+          return;
+        }
+        try {
+          const cell = await makeCell(table, meta, value);
+          if (cell) cells.push(cell);
+          else failed.push(label);
+        } catch (_) {
+          failed.push(label);
+        }
+      }
 
-      put("问题描述", values.desc);
-      put("优先级", values.priority);
-      put(["模块", "所属模块"], values.module);
-      put("进展状态", values.status);
-      put("版本", values.version);
-      put("bug类型", values.bugType);
-      put("备注", values.note);
-      putName(["跟进人"], values.assignee);
-      putUser(["提交人"], userId);
-      putUser(["反馈人"], userId);
-      if (userId) put("提交人 Lark User ID", userId);
+      await add(["问题描述"], values.desc);
+      await add(["优先级"], values.priority);
+      await add(["模块", "所属模块"], values.module);
+      await add(["进展状态"], values.status);
+      await add(["版本"], values.version);
+      await add(["bug类型"], values.bugType);
+      await add(["备注"], values.note);
+      await add(["跟进人"], values.assignee);
+      if (userId) {
+        const submitter = findMeta(metas, ["提交人"]);
+        if (submitter && Number(submitter.type) === 11) await add(["提交人"], userId);
+        const reporter = findMeta(metas, ["反馈人"]);
+        if (reporter && Number(reporter.type) === 11) await add(["反馈人"], userId);
+        await add(["提交人 Lark User ID"], userId);
+      }
 
-      const recordId = await table.addRecord({ fields });
+      if (!cells.length) throw new Error("没有可写入的字段");
+      const created = await table.addRecord(cells);
+      const recordId = typeof created === "string" ? created : (created?.id || created?.recordId || "");
       const bugId = await waitBugNumber(table, recordId, metas);
-      return { recordId, bugId };
+      return { recordId, bugId, failed };
     }
 
     document.getElementById("submit").addEventListener("click", async () => {
@@ -523,7 +592,8 @@
           note: document.getElementById("note").value.trim(),
         });
         await renderQr(qrLink(created.bugId, created.recordId));
-        setStatus("已建单，请用 debug App 扫码", "ok");
+        const missed = (created.failed || []).filter((name) => name !== "提交人" && name !== "提交人 Lark User ID" && name !== "反馈人");
+        setStatus(missed.length ? ("已建单，未写入：" + missed.join("、")) : "已建单，请用 debug App 扫码", missed.length ? "" : "ok");
       } catch (error) {
         setStatus(error.message || String(error), "fail");
       } finally {
@@ -531,7 +601,7 @@
       }
     });
 
-    hydrateModuleOptions();
+    hydrateFields();
   </script>
 </body>
 </html>
